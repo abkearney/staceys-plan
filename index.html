@@ -60,12 +60,14 @@
   .day.run { background: var(--run-bg); } .day.run .dv { color: var(--run-text); }
   .day.strength-up { background: var(--strength-up-bg); } .day.strength-up .dv { color: var(--strength-up-text); }
   .day.strength-low { background: var(--strength-low-bg); } .day.strength-low .dv { color: var(--strength-low-text); }
-  .day.done::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--check-color); background: rgba(255,255,255,0.55); border-radius: var(--radius-sm); pointer-events: none; z-index: 1; }
+  .day.done::after { content: '✓'; position: absolute; top: 3px; right: 4px; font-size: 14px; font-weight: 700; color: var(--check-color); background: none; pointer-events: none; z-index: 1; }
+  .day.done::before { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,0.45); border-radius: var(--radius-sm); pointer-events: none; z-index: 0; }
   .day.done { box-shadow: inset 0 0 0 1.5px var(--check-color); }
   .day.has-note { background: var(--note-bg) !important; box-shadow: inset 0 0 0 1.5px var(--note-outline) !important; }
   .day.has-note .dv, .day.has-note .dd { color: #363636 !important; }
   .day-note { font-size: 10px; font-weight: 600; margin-top: 2px; display: block; line-height: 1.3; word-break: break-word; color: #363636; }
   .day-note-input { width: 100%; border: none; background: transparent; font-size: 10px; font-family: inherit; color: #363636; outline: none; resize: none; padding: 0; margin-top: 2px; line-height: 1.3; }
+  .day-label-input { width: 100%; text-align: center; border: none; background: rgba(255,255,255,0.6); border-radius: 3px; font-family: inherit; font-weight: 600; font-size: 10px; color: inherit; outline: none; padding: 1px 2px; }
   .day.dragging { opacity: 0.35; transform: scale(0.96); }
   [data-drop-target="true"].drop-over { outline: 2px dashed #4a3faa !important; outline-offset: 1px; background-color: #f0eefe !important; border-radius: var(--radius-sm); }
   .section-div { height: 1px; background: var(--border-mid); margin: 2rem 0; }
@@ -522,6 +524,78 @@
     });
   }
 
+  // ─── Workout name override (double-click / double-tap any workout box) ──────
+  const DEFAULT_LABELS = {
+    'bike': 'Bike ride',
+    'run': 'Run',
+    'strength-up': 'Strength · Upper',
+    'strength-low': 'Strength · Lower'
+  };
+  const DEFAULT_EMOJIS = {
+    'bike': '🚴\u200d♀️',
+    'run': '🏃\u200d♀️',
+    'strength-up': '🏋️\u200d♀️',
+    'strength-low': '🦵'
+  };
+  const OVERRIDE_EMOJI = '✨';
+
+  function attachLabelEdit(cell, wid, col, cls) {
+    const defaultLabel = DEFAULT_LABELS[cls] || cell.querySelector('.dv').textContent;
+    const defaultEmoji = DEFAULT_EMOJIS[cls] || '✅';
+    let tapTimer = null;
+
+    function openEditor() {
+      const dvEl = cell.querySelector('.dv');
+      if (!dvEl) return;
+      const currentLabel = dvEl.textContent;
+      dvEl.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'day-label-input';
+      input.value = currentLabel;
+      cell.appendChild(input);
+      input.focus();
+      input.select();
+
+      function commit() {
+        let val = input.value.trim();
+        if (input.parentNode) input.remove();
+        dvEl.style.display = '';
+        if (!val) val = defaultLabel;
+        dvEl.textContent = val;
+        const isOverride = val !== defaultLabel;
+        const emoji = isOverride ? OVERRIDE_EMOJI : defaultEmoji;
+        cell.dataset.emoji = emoji;
+        const slot = weekData[wid][col];
+        if (slot) {
+          const item = slot.find(w => w.id === cell.dataset.id);
+          if (item) { item.label = val; item.emoji = emoji; }
+        }
+        saveLayout(weekData);
+      }
+
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentLabel; input.blur(); }
+      });
+      input.addEventListener('click', e => e.stopPropagation());
+      input.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
+    }
+
+    cell.addEventListener('dblclick', e => { e.stopPropagation(); openEditor(); });
+    cell.addEventListener('touchend', e => {
+      if (tapTimer) {
+        clearTimeout(tapTimer); tapTimer = null;
+        e.stopPropagation(); e.preventDefault();
+        openEditor();
+      } else {
+        tapTimer = setTimeout(() => { tapTimer = null; }, 300);
+      }
+    });
+  }
+
   // ─── Cell builders ───────────────────────────────────────────────────────────
   function makeRestCell(wid, col) {
     const cell = document.createElement('div');
@@ -592,6 +666,9 @@
         const key = wid + '-' + el.dataset.col + '-note';
         attachNote(el, key);
         if (notes[key]) applyNote(el, notes[key]);
+      } else {
+        const cls = Object.keys(DEFAULT_LABELS).find(c => el.classList.contains(c));
+        attachLabelEdit(el, wid, parseInt(el.dataset.col), cls);
       }
     });
 
