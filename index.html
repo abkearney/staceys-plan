@@ -46,6 +46,7 @@
   .week-dates { font-size: 12px; color: var(--text-muted); }
   .day-header-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; margin-bottom: 3px; }
   .dh { font-size: 10px; text-align: center; color: #363636; font-weight: 600; letter-spacing: 0.04em; }
+  .dh-date { display: block; font-size: 9px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0; margin-top: 1px; }
   .day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
   .day { position: relative; min-height: 58px; display: flex; flex-direction: column; justify-content: center; font-size: 10px; text-align: center; padding: 6px 2px 4px; border-radius: var(--radius-sm); background: #ffffff; cursor: pointer; user-select: none; transition: transform 0.1s ease, box-shadow 0.1s ease; overflow: visible; }
   .day:not(.empty):hover { transform: scale(1.04); box-shadow: 0 2px 6px rgba(0,0,0,0.10); }
@@ -179,8 +180,7 @@
             id: isoDate(date) + '-' + tmpl.cls,
             cls: tmpl.cls,
             emoji: tmpl.emoji,
-            label: tmpl.label,
-            dd: fmtShort(date)
+            label: tmpl.label
           }];
         } else {
           slots[i] = null; // rest
@@ -260,7 +260,7 @@
 
   // ─── Week complete ────────────────────────────────────────────────────────────
   function checkWeekComplete(card, c) {
-    const ws = card.querySelectorAll('.day[data-id]');
+    const ws = card.querySelectorAll('.day[data-id]:not(.rest)');
     return ws.length > 0 && Array.from(ws).every(el => c[el.dataset.id]);
   }
   function getWeekName(card) {
@@ -311,7 +311,7 @@
       const isRest = el.classList.contains('rest') && (!slot || slot.length === 0);
       const subIdx = slot ? slot.findIndex(w => w.id === el.dataset.id) : 0;
       const workout = isRest
-        ? { id: el.dataset.id, cls: 'rest', emoji: '😴', label: 'Rest', dd: el.dataset.dd || '' }
+        ? { id: el.dataset.id, cls: 'rest', emoji: '😴', label: 'Rest' }
         : (slot ? slot[subIdx] : null);
       dragState = { wid, col, subIdx: isRest ? 0 : subIdx, workout, isRest };
       e.dataTransfer.effectAllowed = 'move';
@@ -339,7 +339,7 @@
         const subIdx = slot ? slot.findIndex(w => w.id === el.dataset.id) : 0;
         const isRestCell = el.classList.contains('rest') && (!slot || slot.length === 0);
         const touchWorkout = isRestCell
-          ? { id: el.dataset.id, cls: 'rest', emoji: '😴', label: 'Rest', dd: el.dataset.dd || '' }
+          ? { id: el.dataset.id, cls: 'rest', emoji: '😴', label: 'Rest' }
           : (slot ? slot[subIdx] : null);
         dragState = { wid, col, subIdx: isRestCell ? 0 : subIdx, workout: touchWorkout, isRest: isRestCell };
         if (navigator.vibrate) navigator.vibrate(40);
@@ -523,14 +523,12 @@
   }
 
   // ─── Cell builders ───────────────────────────────────────────────────────────
-  function makeRestCell(wid, col, dd) {
+  function makeRestCell(wid, col) {
     const cell = document.createElement('div');
     cell.className = 'day rest';
     cell.dataset.col = col; cell.dataset.wid = wid;
     cell.dataset.id = wid + '-' + col + '-rest';
     cell.dataset.emoji = '😴';
-    cell.dataset.dd = dd || '';
-    if (dd) { const ddEl = document.createElement('span'); ddEl.className='dd'; ddEl.textContent=dd; cell.appendChild(ddEl); }
     const dv = document.createElement('span'); dv.className='dv'; dv.textContent='Rest';
     cell.appendChild(dv);
     return cell;
@@ -541,8 +539,6 @@
     cell.className = 'day ' + w.cls;
     cell.dataset.id = w.id; cell.dataset.emoji = w.emoji;
     cell.dataset.wid = wid; cell.dataset.col = col;
-    cell.dataset.dd = w.dd || '';
-    if (w.dd) { const ddEl = document.createElement('span'); ddEl.className='dd'; ddEl.textContent=w.dd; cell.appendChild(ddEl); }
     const dv = document.createElement('span'); dv.className='dv'; dv.textContent=w.label;
     cell.appendChild(dv);
     return cell;
@@ -556,7 +552,6 @@
     grid.innerHTML = '';
     const slots = weekData[wid];
     const emptyCols = weekEmptySlots[wid] || new Set();
-    const week = weeks.find(w => w.id === wid);
 
     for (let col = 0; col < 7; col++) {
       if (emptyCols.has(col)) {
@@ -566,10 +561,9 @@
         continue;
       }
       const slot = slots[col];
-      const dd = week ? fmtShort(week.days[col]) : '';
 
       if (!slot || slot.length === 0) {
-        const cell = makeRestCell(wid, col, dd);
+        const cell = makeRestCell(wid, col);
         makeDropTarget(cell, wid, col);
         grid.appendChild(cell);
       } else if (slot.length === 1) {
@@ -624,15 +618,18 @@
         return 0;
       })();
       const dateRange = fmtShort(week.days[0]) + ' – ' + fmtShort(week.days[lastInRangeIdx]);
+      const dayAbbrevs = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const headerCells = dayAbbrevs.map((abbr, col) => {
+        const dateLabel = weekEmptySlots[week.id].has(col) ? '' : `<span class="dh-date">${fmtShort(week.days[col])}</span>`;
+        return `<div class="dh">${abbr}${dateLabel}</div>`;
+      }).join('');
 
       const card = document.createElement('div');
       card.className = 'week-card';
       card.dataset.week = week.id;
       card.innerHTML = `
         <div class="week-top"><span class="week-label">Week ${idx+1}</span><span class="week-dates">${dateRange}</span></div>
-        <div class="day-header-row">
-          <div class="dh">Sun</div><div class="dh">Mon</div><div class="dh">Tue</div><div class="dh">Wed</div><div class="dh">Thu</div><div class="dh">Fri</div><div class="dh">Sat</div>
-        </div>
+        <div class="day-header-row">${headerCells}</div>
         <div class="day-grid"></div>
       `;
       container.appendChild(card);
